@@ -10,7 +10,7 @@ PYBICO_VERBOSE = False
 def pybico_import_txt(filename):
 	rn = "(?P<authors>((\w\. ?(\w\. )?[\w]+,? )|([\w]+ [\w]\. ?([\w]\.)?,? ))+)" #regular for authors
 	ra = "(?P<article>.+?) *\/\/ *" #regular for article
-	rj = '(?P<source>[ \w"”]+)' #regular for source
+	rj = '(?P<source>[ \w"“”]+)' #regular for source
 	rm = "(?P<misc>.+)" #regular for misc
 	reg = re.compile(rn+ra+rj+rm)
 	data = []
@@ -18,7 +18,7 @@ def pybico_import_txt(filename):
 	content = f.read()
 	items = content.split('\n')
 	for item in items:
-		res = reg.match(item)
+		res = reg.match(item.strip())
 		if res != None:
 			data.append({"authors": res.group("authors").split(', '), "article": res.group("article"), "source": res.group("source"), "misc": res.group("misc")})
 	return data
