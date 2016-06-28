@@ -77,23 +77,23 @@ def pybico_import(mode, filename, usr, pswd):
 							cursor.execute(get_author_sql, (author))
 							res = cursor.fetchone()
 							author_id.append(res["id"])
-					with connection.cursor() as cursor:
-						get_publication_sql = "SELECT `id` FROM `publication` WHERE `title`=%s"
-						cursor.execute(get_publication_sql, (item["article"]))
-						result = cursor.fetchone()
-						if result:
-							publication_id = result["id"]
-						else:
-							insert_publication_sql = "INSERT INTO `publication` (`title`, `source_id`, `misc`) VALUES (%s, %s, %s)"
-							cursor.execute(insert_publication_sql, (item["article"], str(source_id), item["misc"]))
-							connection.commit()
-							cursor.execute(get_publication_sql, (item["article"]))
-							res = cursor.fetchone()
-							publication_id = res["id"]
-							for author in author_id:
-								insert_relation_sql = "INSERT INTO `relation` (`publication_id`, `author_id`) VALUES (%s, %s)"
-								cursor.execute(insert_relation_sql, (str(publication_id), str(author)))
-							connection.commit()
+			with connection.cursor() as cursor:
+				get_publication_sql = "SELECT `id` FROM `publication` WHERE `title`=%s"
+				cursor.execute(get_publication_sql, (item["article"]))
+				result = cursor.fetchone()
+				if result:
+					publication_id = result["id"]
+				else:
+					insert_publication_sql = "INSERT INTO `publication` (`title`, `source_id`, `misc`) VALUES (%s, %s, %s)"
+					cursor.execute(insert_publication_sql, (item["article"], str(source_id), item["misc"]))
+					connection.commit()
+					cursor.execute(get_publication_sql, (item["article"]))
+					res = cursor.fetchone()
+					publication_id = res["id"]
+					for author in author_id:
+						insert_relation_sql = "INSERT INTO `relation` (`publication_id`, `author_id`) VALUES (%s, %s)"
+						cursor.execute(insert_relation_sql, (str(publication_id), str(author)))
+					connection.commit()
 	finally:
 		connection.close()
 	# return data
