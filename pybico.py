@@ -1,35 +1,60 @@
 import getopt
 import sys
-import re
 import string
 from openpyxl import Workbook
 from openpyxl.styles import Alignment
 import pymysql.cursors
 
+import regex as re
+
 PYBICO_VERBOSE = False
 
+def split_authors(res):
+	authors = res.split(', ')
+	new_authors = []
+	for author in authors:
+		new_authors.append(author.strip().replace(". ", "."))
+	return new_authors
+
+def isEnglish(s):
+    try:
+        s.encode('ascii')
+    except UnicodeEncodeError:
+        return False
+    else:
+        return True
+
 def pybico_import_txt(filename):
-	rn = "(?P<authors>((\w\. ?(\w\. )?[\w]+,? )|([\w]+ [\w]\. ?([\w]\.)?,? ))+)" #regular for authors
-	ra = "(?P<article>.+?) *\/\/ *" #regular for article
-	rj = '(?P<source>[ \w"“”]+)' #regular for source
+	rn1 = "(?P<authors>((\pL\. ?(\pL\. )?\pL+,? )|(\pL+ \pL\. ?(\pL\.)?,? )" #regular for authors
+	rn2 = "|(\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+,? )"
+	rn3 = ")+)"
+	ra_ru = "(?P<article>\p{Lu}\p{Ll}+ \p{Ll}+.*?) *\/\/ *" #regular for article
+	ra_eng = "(?P<article>\p{Lu}.*?) *\/\/ *" #regular for article
+	rj = '(?P<source>[ \pL"“”]+)' #regular for source
 	rm = "(?P<misc>.+)" #regular for misc
-	reg = re.compile(rn+ra+rj+rm)
+	reg_ru = re.compile(rn1+rn2+rn3+ra_ru+rj+rm, re.UNICODE)
+	reg_eng = re.compile(rn1+rn3+ra_eng+rj+rm, re.UNICODE)
 	data = []
 	f = open(filename, 'r')
 	content = f.read()
 	items = content.split('\n')
 	for item in items:
-		res = reg.match(item.strip())
-		if res != None:
-			data.append({"authors": res.group("authors").split(', '), "article": res.group("article"), "source": res.group("source"), "misc": res.group("misc")})
+		res = None
+		if isEnglish(item[:15]):
+			res = reg_eng.match(item.strip())
 		else:
-			print("Wrong line: " + item)
+			res = reg_ru.match(item.strip())
+		if res != None:
+			authors = res.group("authors").split(', ')
+			data.append({"authors": split_authors(res.group("authors")), "article": res.group("article"), "source": res.group("source"), "misc": res.group("misc")})
+		else:
+			print("Wrong line: " + item)	
 	return data
 
-def pybico_import(mode, filename, usr, pswd):
+def pybico_import(format, filename, usr, pswd):
 	data = []
 	#test = ([author1, author2, ...], article, source, misc)
-	if mode == "txt":
+	if format == "txt":
 		data = pybico_import_txt(filename)
 	else:
 		data = None
@@ -118,22 +143,52 @@ def pybico_extract(usr, pswd):
 				target_id = pub["id"]
 				authors = []
 				source = ""
-				get_author_sql = "SELECT `author_id` FROM `relation` WHERE `publication_id`=%s"
-				cursor.execute(get_author_sql, (str(target_id)))
+				get_authors_sql = "SELECT `author_id` FROM `relation` WHERE `publication_id`=%s"
+				cursor.execute(get_authors_sql, (str(target_id)))
 				res = cursor.fetchall()
 				for a in res:
-					get_name_sql = "SELECT `name` FROM `author` WHERE `id`=%s"
+					get_name_sql = "SELECT `name`, `miet` FROM `author` WHERE `id`=%s"
 					cursor.execute(get_name_sql, (str(a["author_id"])))
-					name = cursor.fetchone()
-					authors.append(name["name"])
-				get_source_sql = "SELECT `name` FROM `source` WHERE `id`=%s"
+					author = cursor.fetchone()
+					authors.append({"name": author["name"], "miet": author["miet"]})
+				get_source_sql = "SELECT `name`, `type`, `scopus`, `wos`, `hac`, `rsci` FROM `source` WHERE `id`=%s"
 				cursor.execute(get_source_sql, (str(pub["source_id"])))
 				src_res = cursor.fetchone()
-				source = src_res["name"]
+				source = {"name": src_res["name"], "type": src_res["type"], "scopus": src_res["scopus"], "wos": src_res["wos"], "hac": src_res["hac"], "rsci": src_res["rsci"]}
 				data.append({"authors": authors, "article": pub["title"], "source": source, "misc": pub["misc"]})
 	finally:
 		connection.close()
 	return data
+
+def get_author_names(authors):
+	names = []
+	for author in authors:
+		names.append(author["name"])
+	return names
+
+def get_author_miet(authors):
+	miet = 0
+	for author in authors:
+		miet += not not author["miet"]
+	return miet
+
+def get_impact_factor(source):
+	impact_list = [source["scopus"], source["wos"], source["hac"], source["rsci"]]
+	impact = max(impact_list)
+	if impact == 0:
+		impact = -1
+	if impact == -1:
+		return ""
+	return impact
+
+def get_status(source):
+	status = []
+	impact_list = [source["scopus"], source["wos"], source["hac"], source["rsci"]]
+	status_list = ["Scopus", "Web of Science", "ВАК", "РИНЦ"]
+	for i, impact in enumerate(impact_list):
+		if impact != 0:
+			status.append(status_list[i])
+	return status
 
 def pybico_export_xlsx(filename, data):
 	offset = 3
@@ -148,71 +203,75 @@ def pybico_export_xlsx(filename, data):
 		ch = pos_to_char(c-1)
 		ws.column_dimensions[ch].width = 20
 	for r in range(1,offset+1):
-		for c in range(1,9):
+		for c in range(1,10):
 			ws.cell(row = r, column = c).alignment = wstyle2
 	for r in range(offset+1, offset+len(data)+1):
-		for c in (2,3,4,6):
+		for c in (2,3,4,5):
 			ws.cell(row = r, column = c).alignment = wstyle1
-		for c in (1,5,7,8):
+		for c in (1,6,7,8,9):
 			ws.cell(row = r, column = c).alignment = wstyle2
-	ws.merge_cells('G1:H1')
+	ws.merge_cells('H1:I1')
 	ws['A1'] = "№ раздела"
 	ws['B1'] = "Автор (ФИО сотрудника МИЭТ, студента, аспиранта)"
 	ws['C1'] = "Название статьи, книги, монографии, уч. пособия и др."
 	ws['D1'] = "Наименование журнала или конференции"
-	ws['E1'] = "Статус\nWeb of Science\nScopus\nРИНЦ\nВАК"
-	ws['F1'] = "Город, издательство, год, номер, том, страницы"
-	ws['G1'] = "Количество авторов"
-	ws['G2'] = "Всего"
-	ws['H2'] = "В т.ч. сотрудников МИЭТ"
+	ws['E1'] = "Город, издательство, год, номер, том, страницы"
+	ws['F1'] = "Статус\nWeb of Science\nScopus\nРИНЦ\nВАК"
+	ws['G1'] = "Импакт-фактор"
+	ws['H1'] = "Количество авторов"
+	ws['H2'] = "Всего"
+	ws['I2'] = "В т.ч. сотрудников МИЭТ"
 	for c in range(1,9):
 		ws.cell(row = 3, column = c).value = c
 	for i, item in enumerate(data):
 		pos = str(i+1+offset)
-		ws['A'+pos] = "todo"
-		ws['B'+pos] = "\n".join(item["authors"])
+		ws['A'+pos] = item["source"]["type"]
+		ws['B'+pos] = "\n".join(get_author_names(item["authors"]))
 		ws['C'+pos] = item["article"]
-		ws['D'+pos] = item["source"]
-		ws['E'+pos] = "todo"
-		ws['F'+pos] = item["misc"]
-		ws['G'+pos] = str(len(item["authors"]))
-		ws['H'+pos] = "todo"
+		ws['D'+pos] = item["source"]["name"]
+		ws['E'+pos] = item["misc"]
+		ws['F'+pos] = str("\n".join(get_status(item["source"])))
+		ws['G'+pos] = str(get_impact_factor(item["source"]))
+		ws['H'+pos] = str(len(item["authors"]))
+		ws['I'+pos] = str(get_author_miet(item["authors"]))
 
 	wb.save(filename) 
 
-def pybico_export(mode, filename, data):
-	if mode == "xlsx":
+def pybico_export(format, filename, data):
+	if format == "xlsx":
 		pybico_export_xlsx(filename, data)
 	else:
 		return None
 	
 def usage():
-	print("usage: pybico [options] input output user password_path")
+	print("usage: pybico [options]")
 	print("\toptions:")
 	print("\t -h, --help\t print out help")
 	print("\t -v\t verbose mode")
-	print("\t -i\t input mode (txt)")
-	print("\t -o\t output mode (xlsx)")
+	print("\t -i\t path to import file")
+	print("\t -e\t path to export file")
+	print("\t --if\t import format (txt)")
+	print("\t --ef\t export format (xlsx)")
+	print("\t -u\t database user")
+	print("\t -p\t path to database password")
 
 def main(argv):
 	global PYBICO_VERBOSE
 
 	try:
-		opts, args = getopt.getopt(argv, "hx:vu:p:", ["help", "xlsx"])
+		opts, args = getopt.getopt(argv, "hvi:e:u:p:", ["help", "if", "ef"])
 	except getopt.GetoptError as err:
 		print(str(err))
 		usage()
 		sys.exit(2)
 
 	PYBICO_VERBOSE = False
-	input_mode = "txt"
-	output_mode = "xlsx"
-	input_filename = args[0]
-	output_filename = args[1]
-	password_path = args[3]
-	f = open(password_path, 'r')
-	password = f.read()
-	user = args[2]
+	import_format = "txt"
+	export_format = "xlsx"
+	import_filename = ""
+	export_filename = ""
+	password_path = ""
+	user = ""
 
 	for o, a in opts:
 		if o == "-v":
@@ -220,19 +279,29 @@ def main(argv):
 		elif o in ("-h", "--help"):
 			usage()
 			sys.exit()
-		elif o == "-i":
-			input_mode = a
-		elif o == "-o":
-			output_mode = a
-		elif o == "-c":
-			password_path = a
 		elif o == "-u":
 			user = a
+		elif o == "-p":
+			password_path = a
+		elif o == "-i":
+			import_filename = a
+		elif o == "-e":
+			export_filename = a
+		elif o == "--if":
+			import_format = a
+		elif o == "--ef":
+			export_format = a
 		else:
 			assert False, "unhandled option"
-	pybico_import(input_mode, input_filename, user, password)
-	data = pybico_extract(user, password)
-	pybico_export(output_mode, output_filename, data)
+
+	f = open(password_path, 'r')
+	password = f.read()
+
+	if import_filename != "":
+		pybico_import(import_format, import_filename, user, password)
+	if export_filename != "":
+		data = pybico_extract(user, password)
+		pybico_export(export_format, export_filename, data)
 
 if __name__ == '__main__':
 	main(sys.argv[1:])
