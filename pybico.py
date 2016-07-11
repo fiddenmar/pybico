@@ -1,8 +1,7 @@
 import getopt
 import sys
 import string
-from openpyxl import Workbook
-from openpyxl.styles import Alignment
+import xlsxwriter
 import pymysql.cursors
 
 import regex as re
@@ -147,10 +146,10 @@ def pybico_extract(usr, pswd):
 				cursor.execute(get_authors_sql, (str(target_id)))
 				res = cursor.fetchall()
 				for a in res:
-					get_name_sql = "SELECT `name`, `miet` FROM `author` WHERE `id`=%s"
+					get_name_sql = "SELECT `name`, `position`, `miet` FROM `author` WHERE `id`=%s"
 					cursor.execute(get_name_sql, (str(a["author_id"])))
 					author = cursor.fetchone()
-					authors.append({"name": author["name"], "miet": author["miet"]})
+					authors.append({"name": author["name"], "position": author["position"], "miet": author["miet"]})
 				get_source_sql = "SELECT `name`, `type`, `scopus`, `wos`, `hac`, `rsci` FROM `source` WHERE `id`=%s"
 				cursor.execute(get_source_sql, (str(pub["source_id"])))
 				src_res = cursor.fetchone()
@@ -160,11 +159,22 @@ def pybico_extract(usr, pswd):
 		connection.close()
 	return data
 
-def get_author_names(authors):
+def get_author_names(authors, styles, cell_format):
 	names = []
-	for author in authors:
-		names.append(author["name"])
-	return names
+	for i, author in enumerate(authors):
+		if (not not author["miet"]):
+			if (author["position"] == "аспирант"):
+				names.append(styles["aspir"])
+			elif (author["position"] == "студент"):
+				names.append(styles["student"])
+			else:
+				names.append(styles["miet"])
+		if i == len(authors)-1:
+			names.append(author["name"])
+		else:
+			names.append(author["name"]+"\n")
+	names.append(cell_format)
+	return tuple(names)
 
 def get_author_miet(authors):
 	miet = 0
@@ -192,50 +202,70 @@ def get_status(source):
 
 def pybico_export_xlsx(filename, data):
 	offset = 3
-	wb = Workbook()
-	ws = wb.active
-	wstyle1 = Alignment(horizontal='left', vertical='top', text_rotation=0, wrap_text=True, shrink_to_fit=False, indent=0)
-	wstyle2 = Alignment(horizontal='center', vertical='center', text_rotation=0, wrap_text=True, shrink_to_fit=False, indent=0)
-	for r in range(0, offset+len(data)+1):
-		ws.row_dimensions[r+1].height = 100
-	ws.row_dimensions[3].height = 15
-	for c in range(1,9):
-		ch = pos_to_char(c-1)
-		ws.column_dimensions[ch].width = 20
-	for r in range(1,offset+1):
-		for c in range(1,10):
-			ws.cell(row = r, column = c).alignment = wstyle2
-	for r in range(offset+1, offset+len(data)+1):
-		for c in (2,3,4,5):
-			ws.cell(row = r, column = c).alignment = wstyle1
-		for c in (1,6,7,8,9):
-			ws.cell(row = r, column = c).alignment = wstyle2
-	ws.merge_cells('H1:I1')
-	ws['A1'] = "№ раздела"
-	ws['B1'] = "Автор (ФИО сотрудника МИЭТ, студента, аспиранта)"
-	ws['C1'] = "Название статьи, книги, монографии, уч. пособия и др."
-	ws['D1'] = "Наименование журнала или конференции"
-	ws['E1'] = "Город, издательство, год, номер, том, страницы"
-	ws['F1'] = "Статус\nWeb of Science\nScopus\nРИНЦ\nВАК"
-	ws['G1'] = "Импакт-фактор"
-	ws['H1'] = "Количество авторов"
-	ws['H2'] = "Всего"
-	ws['I2'] = "В т.ч. сотрудников МИЭТ"
-	for c in range(1,9):
-		ws.cell(row = 3, column = c).value = c
-	for i, item in enumerate(data):
-		pos = str(i+1+offset)
-		ws['A'+pos] = item["source"]["type"]
-		ws['B'+pos] = "\n".join(get_author_names(item["authors"]))
-		ws['C'+pos] = item["article"]
-		ws['D'+pos] = item["source"]["name"]
-		ws['E'+pos] = item["misc"]
-		ws['F'+pos] = str("\n".join(get_status(item["source"])))
-		ws['G'+pos] = str(get_impact_factor(item["source"]))
-		ws['H'+pos] = str(len(item["authors"]))
-		ws['I'+pos] = str(get_author_miet(item["authors"]))
+	wb = xlsxwriter.Workbook(filename)
+	ws = wb.add_worksheet()
+	center = wb.add_format()
+	center.set_text_wrap()
+	center.set_align("center")
+	center.set_align("vcenter")
+	left = wb.add_format()
+	left.set_text_wrap()
+	left.set_align("left")
+	left.set_align("top")
 
-	wb.save(filename) 
+	miet = wb.add_format()
+	miet.set_underline()
+	aspir = wb.add_format()
+	aspir.set_underline()
+	aspir.set_bold()
+	student = wb.add_format()
+	student.set_underline()
+	student.set_italic()
+	styles = {"miet": miet, "aspir": aspir, "student": student}
+	
+	ws.write(0, 0, "№ раздела", center)
+	ws.write(0, 1, "Автор (ФИО сотрудника МИЭТ, студента, аспиранта, center)", center)
+	ws.write(0, 2, "Название статьи, книги, монографии, уч. пособия и др.", center)
+	ws.write(0, 3, "Наименование журнала или конференции", center)
+	ws.write(0, 4, "Город, издательство, год, номер, том, страницы", center)
+	ws.write(0, 5, "Статус\nWeb of Science\nScopus\nРИНЦ\nВАК", center)
+	ws.write(0, 6, "Импакт-фактор", center)
+	ws.merge_range('H1:I1', "Количество авторов", center)
+	ws.write(1, 7, "Всего", center)
+	ws.write(1, 8, "В т.ч. сотрудников МИЭТ", center)
+
+	ws.set_row(0, 80)
+	ws.set_row(1, 40)
+	ws.set_column(0, 0, 10)
+	ws.set_column(1, 1, 20)
+	ws.set_column(2, 2, 40)
+	ws.set_column(3, 3, 25)
+	ws.set_column(4, 4, 25)
+	ws.set_column(5, 5, 10)
+	ws.set_column(6, 6, 10)
+	ws.set_column(7, 7, 10)
+	ws.set_column(8, 8, 15)
+
+	for i in range(1, 10):
+		ws.write(2, i-1, str(i), center)
+
+	for i, item in enumerate(data):
+		pos = i+offset
+		ws.write(pos, 0, str(item["source"]["type"]), center)
+		ws.write_rich_string(pos, 1, *get_author_names(item["authors"], styles, left))
+		ws.write(pos, 2, item["article"], left)
+		ws.write(pos, 3, item["source"]["name"], left)
+		ws.write(pos, 4, item["misc"], left)
+		ws.write(pos, 5, str("\n".join(get_status(item["source"]))), center)
+		ws.write(pos, 6, str(get_impact_factor(item["source"])), center)
+		ws.write(pos, 7, str(len(item["authors"])), center)
+		ws.write(pos, 8, str(get_author_miet(item["authors"])), center)
+		height = 4
+		if len(item["authors"]) > height:
+			height = len(item["authors"])
+		ws.set_row(pos, 20*height)
+
+	wb.close()
 
 def pybico_export(format, filename, data):
 	if format == "xlsx":
