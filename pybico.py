@@ -3,6 +3,7 @@ import sys
 import string
 import xlsxwriter
 import pymysql.cursors
+import requests
 
 import regex as re
 
@@ -24,13 +25,13 @@ def isEnglish(s):
         return True
 
 def pybico_import_txt(filename):
-	rn1 = "(?P<authors>((\pL\. ?(\pL\. )?\pL+,? )|(\pL+ \pL\. ?(\pL\.)?,? )" #regular for authors
-	rn2 = "|(\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+,? )"
-	rn3 = ")+)"
-	ra_ru = "(?P<article>\p{Lu}\p{Ll}+ \p{Ll}+.*?) *\/\/ *" #regular for article
-	ra_eng = "(?P<article>\p{Lu}.*?) *\/\/ *" #regular for article
-	rj = '(?P<source>[ \pL"“”]+)' #regular for source
-	rm = "(?P<misc>.+)" #regular for misc
+	rn1 = r"(?P<authors>((\pL\. ?(\pL\. )?\pL+,? )|(\pL+ \pL\. ?(\pL\.)?,? )" #regular for authors
+	rn2 = r"|(\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+,? )"
+	rn3 = r")+)"
+	ra_ru = r"(?P<article>\p{Lu}\p{Ll}+ \p{Ll}+.*?) *\/\/ *" #regular for article
+	ra_eng = r"(?P<article>\p{Lu}.*?) *\/\/ *" #regular for article
+	rj = r'(?P<source>[ \pL"“”]+)' #regular for source
+	rm = r"(?P<misc>.+)" #regular for misc
 	reg_ru = re.compile(rn1+rn2+rn3+ra_ru+rj+rm, re.UNICODE)
 	reg_eng = re.compile(rn1+rn3+ra_eng+rj+rm, re.UNICODE)
 	data = []
@@ -50,11 +51,42 @@ def pybico_import_txt(filename):
 			print("Wrong line: " + item)	
 	return data
 
+def clean(string, p):
+	result = p.sub('', string)
+	return result
+
+def pybico_import_id(filename):
+	data = []
+	f = open(filename, 'r')
+	content = f.read()
+	author_ids = content.split('\n')
+	print(author_ids)
+	tr = r'id="arw.+?".*?a href=.*?<b>(?P<article>.*?)<\/b>.*?<i>(?P<authors>.*?)<\/i>.*?<font color=.+?>((.*?В сборнике: )?<a .+?>(?P<source>.+?)<\/a>)?(?P<misc>.+?)</td'#
+	reg = re.compile(tr, re.UNICODE)
+	p = re.compile(r'(<.*?>)|(&nbsp;)|(^[., ])')
+	for author_id in author_ids:
+		r = requests.get('http://elibrary.ru/author_items.asp?authorid='+author_id)
+		html = r.text
+		number_of_pages = 1
+		while 'javascript:goto_page('+str(number_of_pages)+')' in html:
+			number_of_pages+=1
+		number_of_pages-=1
+		for page_number in range(number_of_pages):
+			request = requests.post('http://elibrary.ru/author_items.asp', data = {'authorid': author_id, 'pagenum': ''+str(page_number+1)})
+			page = request.text.replace('\n', '').replace('\r', '')
+			matches = reg.findall(page)
+			for res in matches:
+				data.append(({"authors": split_authors(clean(res[1], p)), "article": clean(res[0], p), "source": clean(res[4], p), "misc": clean(res[5], p)}))
+	return data
+
+
 def pybico_import(format, filename, usr, pswd):
 	data = []
 	#test = ([author1, author2, ...], article, source, misc)
 	if format == "txt":
 		data = pybico_import_txt(filename)
+	elif format == "id":
+		data = pybico_import_id(filename)
 	else:
 		data = None
 
@@ -115,9 +147,13 @@ def pybico_import(format, filename, usr, pswd):
 					res = cursor.fetchone()
 					publication_id = res["id"]
 					for author in author_id:
-						insert_relation_sql = "INSERT INTO `relation` (`publication_id`, `author_id`) VALUES (%s, %s)"
-						cursor.execute(insert_relation_sql, (str(publication_id), str(author)))
-					connection.commit()
+						get_relation_sql = "SELECT * FROM `relation` WHERE `publication_id`=%s AND `author_id`=%s"
+						cursor.execute(get_relation_sql, (str(publication_id), str(author)))
+						result = cursor.fetchone()
+						if result:
+							insert_relation_sql = "INSERT INTO `relation` (`publication_id`, `author_id`) VALUES (%s, %s)"
+							cursor.execute(insert_relation_sql, (str(publication_id), str(author)))
+							connection.commit()
 	finally:
 		connection.close()
 	# return data
@@ -278,10 +314,10 @@ def usage():
 	print("\toptions:")
 	print("\t -h, --help\t print out help")
 	print("\t -v\t verbose mode")
-	print("\t -i\t path to import file")
-	print("\t -e\t path to export file")
-	print("\t --if\t import format (txt)")
-	print("\t --ef\t export format (xlsx)")
+	print("\t -o\t import file path to open")
+	print("\t -s\t export file path to save")
+	print("\t -i\t import format (txt, id)")
+	print("\t -e\t export format (xlsx)")
 	print("\t -u\t database user")
 	print("\t -p\t path to database password")
 
@@ -289,7 +325,7 @@ def main(argv):
 	global PYBICO_VERBOSE
 
 	try:
-		opts, args = getopt.getopt(argv, "hvi:e:u:p:", ["help", "if", "ef"])
+		opts, args = getopt.getopt(argv, "hvo:s:i:e:u:p:", ["help"])
 	except getopt.GetoptError as err:
 		print(str(err))
 		usage()
@@ -313,13 +349,13 @@ def main(argv):
 			user = a
 		elif o == "-p":
 			password_path = a
-		elif o == "-i":
+		elif o == "-o":
 			import_filename = a
-		elif o == "-e":
+		elif o == "-s":
 			export_filename = a
-		elif o == "--if":
+		elif o == "-i":
 			import_format = a
-		elif o == "--ef":
+		elif o == "-e":
 			export_format = a
 		else:
 			assert False, "unhandled option"

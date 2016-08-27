@@ -1,0 +1,4 @@
+truncate table author;
+truncate table publication;
+truncate table relation;
+truncate table source

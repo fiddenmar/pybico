@@ -11,9 +11,9 @@ It also requires mysql server running on localhost and having database 'pybico' 
 # Run
 ## Help
 python3 pybico.py -h
-## Import
+## Import txt
 python3 pybico.py -i import.txt -u mysql_user -p path_to_file_with_mysql_user_password
-## Export
+## Export txt
 python3 pybico.py -e output.xlsx -u mysql_user -p path_to_file_with_mysql_user_password
 ## Import and export
 python3 pybico.py -i import.txt -e output.xlsx -u mysql_user -p path_to_file_with_mysql_user_password
