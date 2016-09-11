@@ -55,28 +55,61 @@ def clean(string, p):
 	result = p.sub('', string)
 	return result
 
+def get_result(found, factor):
+	if found != "да":
+		return 0
+	if factor == '':
+		return -1
+	return factor
+
 def pybico_import_id(filename):
 	data = []
 	f = open(filename, 'r')
 	content = f.read()
 	author_ids = content.split('\n')
 	print(author_ids)
-	tr = r'id="arw.+?".*?a href=.*?<b>(?P<article>.*?)<\/b>.*?<i>(?P<authors>.*?)<\/i>.*?<font color=.+?>((.*?В сборнике: )?<a .+?>(?P<source>.+?)<\/a>)?(?P<misc>.+?)</td'#
-	reg = re.compile(tr, re.UNICODE)
+	article_reg_string = r'id="arw(?P<id>\d*).+?".*?a href=.*?<b>(?P<article>.*?)<\/b>.*?<i>(?P<authors>.*?)<\/i>.*?<font color=.+?>((.*?В сборнике: )?<a .+?>(?P<source>.+?)<\/a>)?(?P<misc>.+?)<\/td'
+	article_reg = re.compile(article_reg_string, re.UNICODE)
+	rsci_reg_string = r'Входит в РИНЦ.*?<font color=#00008f>(?P<rsci>.*?)<\/font>.*?(Импакт-фактор журнала в РИНЦ.*?<font color=#00008f>(?P<rsci_factor>\d+)<\/font>)?'
+	scopus_reg_string = r'.*?Входит в Scopus.*?<font color=#00008f>(?P<scopus>.*?)<\/font>.*?(Импакт-фактор журнала в Scopus.*?<font color=#00008f>(?P<scopus_factor>\d+)<\/font>)?'
+	wos_reg_string = r'.*?Входит в Web of Science.*?<font color=#00008f>(?P<wos>.*?)<\/font>.*?(Импакт-фактор журнала в Web of Science.*?<font color=#00008f>(?P<wos_factor>\d+)<\/font>)?'
+	#hac_reg_string = r'(Входит в ВАК.*?<font color=#00008f>(?P<hac>(да)|(нет))</font>)?.*(Импакт-фактор журнала в ВАК.*?<font color=#00008f>(?P<hac_factor>\d+)</font>)?'
+	status_reg_string = rsci_reg_string+scopus_reg_string+wos_reg_string
+	status_reg = re.compile(status_reg_string, re.UNICODE)
 	p = re.compile(r'(<.*?>)|(&nbsp;)|(^[., ])')
 	for author_id in author_ids:
-		r = requests.get('http://elibrary.ru/author_items.asp?authorid='+author_id)
+		request_status_code = 0
+		while request_status_code != 200 :
+			r = requests.get('http://elibrary.ru/author_items.asp?authorid='+author_id)
+			request_status_code = r.status_code
 		html = r.text
 		number_of_pages = 1
 		while 'javascript:goto_page('+str(number_of_pages)+')' in html:
 			number_of_pages+=1
-		number_of_pages-=1
+		if number_of_pages != 1:
+			number_of_pages-=1
 		for page_number in range(number_of_pages):
-			request = requests.post('http://elibrary.ru/author_items.asp', data = {'authorid': author_id, 'pagenum': ''+str(page_number+1)})
-			page = request.text.replace('\n', '').replace('\r', '')
-			matches = reg.findall(page)
-			for res in matches:
-				data.append(({"authors": split_authors(clean(res[1], p)), "article": clean(res[0], p), "source": clean(res[4], p), "misc": clean(res[5], p)}))
+			request_status_code = 0
+			while request_status_code != 200 :
+				page_request = requests.post('http://elibrary.ru/author_items.asp', data = {'authorid': author_id, 'pagenum': ''+str(page_number+1)})
+				request_status_code = page_request.status_code
+			page = page_request.text.replace('\n', '').replace('\r', '')
+			matches = article_reg.findall(page)
+			for article_res in matches:
+				request_status_code = 0
+				while request_status_code != 200 :
+					article_request = requests.get('http://elibrary.ru/item.asp?id='+article_res[0])
+					request_status_code = article_request.status_code
+				article_page = article_request.text.replace('\n', '').replace('\r', '')
+				status_res = status_reg.findall(article_page)
+				#status_res_hac = status_reg_hac.match(article_page)
+				data.append(({"authors": split_authors(clean(article_res[2], p)), "article": clean(article_res[1], p),
+					"source": clean(article_res[3], p), "misc": clean(article_res[6], p),
+					"scopus": get_result(status_res[0][3], status_res[0][5]),
+					"wos": get_result(status_res[0][6], status_res[0][8]), 
+					#"hac": get_result(status_res_hac["hac"] if status_res_hac["hac"] else '', status_res_hac["hac_factor"] if status_res_hac["hac_factor"] else 0),
+					"rsci": get_result(status_res[0][0], status_res[0][2])
+					}))
 	return data
 
 
@@ -150,7 +183,7 @@ def pybico_import(format, filename, usr, pswd):
 						get_relation_sql = "SELECT * FROM `relation` WHERE `publication_id`=%s AND `author_id`=%s"
 						cursor.execute(get_relation_sql, (str(publication_id), str(author)))
 						result = cursor.fetchone()
-						if result:
+						if not result:
 							insert_relation_sql = "INSERT INTO `relation` (`publication_id`, `author_id`) VALUES (%s, %s)"
 							cursor.execute(insert_relation_sql, (str(publication_id), str(author)))
 							connection.commit()
@@ -233,7 +266,10 @@ def get_status(source):
 	status_list = ["Scopus", "Web of Science", "ВАК", "РИНЦ"]
 	for i, impact in enumerate(impact_list):
 		if impact != 0:
-			status.append(status_list[i])
+			output = status_list[i]
+			if impact != -1:
+				output = output+"="+impact
+			status.append(output)
 	return status
 
 def pybico_export_xlsx(filename, data):
@@ -360,9 +396,10 @@ def main(argv):
 		else:
 			assert False, "unhandled option"
 
-	f = open(password_path, 'r')
-	password = f.read()
+	# f = open(password_path, 'r')
+	# password = f.read()
 
+	password = "12345"
 	if import_filename != "":
 		pybico_import(import_format, import_filename, user, password)
 	if export_filename != "":
