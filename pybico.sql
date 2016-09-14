@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS `relation` (
 
 CREATE TABLE IF NOT EXISTS `source` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `name` varchar(1024) COLLATE utf8_unicode_ci NOT NULL,
   `type` int(4) NOT NULL DEFAULT '0',
   `scopus` float NOT NULL DEFAULT '0',
   `wos` float NOT NULL DEFAULT '0',
