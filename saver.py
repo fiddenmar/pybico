@@ -2,13 +2,12 @@ import xlsxwriter
 
 class Saver:
 
-	def __init__(self, save_format = None, filename = None):
-		self.save_format = save_format if save_format else "xlsx"
-		self.filename = filename if filename else "result."+self.save_format
+	def __init__(self):
+		pass
 
 	def save(self, data, save_format = None, filename = None):
-		self.save_format = save_format if save_format else self.save_format
-		self.filename = filename if filename else self.filename
+		self.save_format = save_format if save_format else "xlsx"
+		self.filename = filename if filename else "result."+self.save_format
 
 		if self.save_format == "xlsx":
 			self.__save_xlsx()

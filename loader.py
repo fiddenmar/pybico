@@ -3,16 +3,14 @@ import regex as re
 
 class Loader:
 
-	def __init__(self, load_format = None, filename = None):
-		self.load_format = load_format if load_format else "txt"
-		self.filename = filename if filename else "data."+format
+	def __init__(self):
+		pass
 
 	def load(self, load_format = None, filename = None):
-		self.load_format = load_format if load_format else self.load_format
-		self.filename = filename if filename else self.filename
+		self.load_format = load_format if load_format else "txt"
+		self.filename = filename if filename else "data."+self.load_format
 
 		data = []
-		#test = ([author1, author2, ...], article, source, misc)
 		if self.load_format == "txt":
 			data = self.__load_txt()
 		elif self.load_format == "id":

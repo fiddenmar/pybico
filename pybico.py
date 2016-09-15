@@ -31,10 +31,10 @@ def main(argv):
 		sys.exit(2)
 
 	PYBICO_VERBOSE = False
-	import_format = "txt"
-	export_format = "xlsx"
-	import_filename = ""
-	export_filename = ""
+	load_format = "txt"
+	save_format = "xlsx"
+	load_filename = ""
+	save_filename = ""
 	password_path = ""
 	user = ""
 
@@ -49,29 +49,28 @@ def main(argv):
 		elif o == "-p":
 			password_path = a
 		elif o == "-l":
-			import_filename = a
+			load_filename = a
 		elif o == "-s":
-			export_filename = a
+			save_filename = a
 		elif o == "-i":
-			import_format = a
+			load_format = a
 		elif o == "-e":
-			export_format = a
+			save_format = a
 		else:
 			assert False, "unhandled option"
 
-	# f = open(password_path, 'r')
-	# password = f.read()
+	f = open(password_path, 'r')
+	password = f.read()
 
-	password = "12345"
 	db = DB(user, password)
-	if import_filename != "":
-		l = Loader(import_format, import_filename)
-		data = l.load()
+	if load_filename != "":
+		l = Loader()
+		data = l.load(load_format, load_filename)
 		db.add(data)
-	if export_filename != "":
+	if save_filename != "":
 		data = db.get()
-		s = Saver(data, export_format, export_filename)
-		s.save()
+		s = Saver(data)
+		s.save(save_format, save_filename)
 
 if __name__ == '__main__':
 	main(sys.argv[1:])
