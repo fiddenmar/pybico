@@ -69,8 +69,8 @@ def main(argv):
 		db.add(data)
 	if save_filename != "":
 		data = db.get()
-		s = Saver(data)
-		s.save(save_format, save_filename)
+		s = Saver()
+		s.save(data, save_format, save_filename)
 
 if __name__ == '__main__':
 	main(sys.argv[1:])

@@ -1,5 +1,8 @@
 import requests
 import regex as re
+from author import Author
+from source import Source
+from publication import Publication
 
 class Loader:
 
@@ -40,7 +43,10 @@ class Loader:
 			else:
 				res = reg_ru.match(item.strip())
 			if res != None:
-				authors = res.group("authors").split(', ')
+				publication = Publication()
+				publication.authors = Author.parseAuthors(res.group("authors"))
+
+
 				data.append({"authors": split_authors(res.group("authors")), "article": res.group("article"), "source": res.group("source"), "misc": res.group("misc")})
 			else:
 				print("Wrong line: " + item)

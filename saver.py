@@ -10,7 +10,7 @@ class Saver:
 		self.filename = filename if filename else "result."+self.save_format
 
 		if self.save_format == "xlsx":
-			self.__save_xlsx()
+			self.__save_xlsx(data)
 		else:
 			return None
 
