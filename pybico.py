@@ -60,7 +60,7 @@ def main(argv):
 			assert False, "unhandled option"
 
 	f = open(password_path, 'r')
-	password = f.read()
+	password = f.read().strip('\n')
 
 	db = DB(user, password)
 	if load_filename != "":
