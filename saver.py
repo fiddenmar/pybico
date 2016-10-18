@@ -38,7 +38,7 @@ class Saver:
 		styles = {"miet": miet, "aspir": aspir, "student": student}
 
 		ws.write(0, 0, "№ раздела", center)
-		ws.write(0, 1, "Автор (ФИО сотрудника МИЭТ, студента, аспиранта, center)", center)
+		ws.write(0, 1, "Автор (ФИО сотрудника МИЭТ, студента, аспиранта", center)
 		ws.write(0, 2, "Название статьи, книги, монографии, уч. пособия и др.", center)
 		ws.write(0, 3, "Наименование журнала или конференции", center)
 		ws.write(0, 4, "Город, издательство, год, номер, том, страницы", center)
