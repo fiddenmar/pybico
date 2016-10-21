@@ -8,13 +8,9 @@ class Saver:
 	def save(self, data, save_format = None, filename = None):
 		self.save_format = save_format if save_format else "xlsx"
 		self.filename = filename if filename else "result."+self.save_format
+		self.save_data(data)
 
-		if self.save_format == "xlsx":
-			self.__save_xlsx(data)
-		else:
-			return None
-
-	def __save_xlsx(self, data):
+	def save_data(self, data):
 		offset = 3
 		wb = xlsxwriter.Workbook(self.filename)
 		ws = wb.add_worksheet()

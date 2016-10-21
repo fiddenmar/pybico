@@ -9,50 +9,13 @@ class Loader:
 	def __init__(self):
 		pass
 
-	def load(self, load_format = None, filename = None):
-		self.load_format = load_format if load_format else "txt"
+	def load(self, filename = None):
 		self.filename = filename if filename else "data."+self.load_format
-
 		data = []
-		if self.load_format == "txt":
-			data = self.__load_txt()
-		elif self.load_format == "id":
-			data = self.__load_id()
-		else:
-			data = None
+		data = self.load_data()
 		return data
 
-	def __load_txt(self):
-		rn1 = r"(?P<authors>((\pL\. ?(\pL\. )?\pL+,? )|(\pL+ \pL\. ?(\pL\.)?,? )" #regular for authors
-		rn2 = r"|(\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+,? )"
-		rn3 = r")+)"
-		ra_ru = r"(?P<article>\p{Lu}\p{Ll}+ \p{Ll}+.*?) *\/\/ *" #regular for article
-		ra_eng = r"(?P<article>\p{Lu}.*?) *\/\/ *" #regular for article
-		rj = r'(?P<source>[ \pL"“”]+)' #regular for source
-		rm = r"(?P<misc>.+)" #regular for misc
-		reg_ru = re.compile(rn1+rn2+rn3+ra_ru+rj+rm, re.UNICODE)
-		reg_eng = re.compile(rn1+rn3+ra_eng+rj+rm, re.UNICODE)
-		data = []
-		f = open(self.filename, 'r')
-		content = f.read()
-		items = content.split('\n')
-		for item in items:
-			res = None
-			if isEnglish(item[:15]):
-				res = reg_eng.match(item.strip())
-			else:
-				res = reg_ru.match(item.strip())
-			if res != None:
-				publication = Publication()
-				publication.authors = Author.parseAuthors(res.group("authors"))
-
-
-				data.append({"authors": split_authors(res.group("authors")), "article": res.group("article"), "source": res.group("source"), "misc": res.group("misc")})
-			else:
-				print("Wrong line: " + item)
-		return data
-
-	def __load_id(self):
+	def load_data(self):
 		data = []
 		f = open(self.filename, 'r')
 		content = f.read()
